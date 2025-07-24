@@ -26,7 +26,8 @@ locals {
     "serviceusage.googleapis.com",
     "storage.googleapis.com",
     "workflows.googleapis.com",
-    "youtube.googleapis.com"
+    "youtube.googleapis.com",
+    "googleads.googleapis.com"
   ]
   sanitized_project_id = replace(var.project_id, ":", "/")
   workflow_contents = file("../files/workflow.yaml")
@@ -34,7 +35,12 @@ locals {
 }
 
 resource "null_resource" "base_apis" {
-  for_each = toset(["serviceusage.googleapis.com", "cloudresourcemanager.googleapis.com"])
+  for_each = toset([
+    "serviceusage.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "compute.googleapis.com",
+    "iam.googleapis.com"
+  ])
   provisioner "local-exec" {
     command = "gcloud services enable $SERVICE --project $PROJECT"
 
@@ -274,6 +280,26 @@ resource "google_workflows_workflow" "agency_assets_wf" {
 }
 
 data "google_compute_default_service_account" "default" {
+}
+
+locals {
+  service_account_roles = toset([
+    "roles/iam.serviceAccountUser",
+    "roles/run.developer",
+    "roles/bigquery.admin",
+    "roles/storage.admin",
+    "roles/storage.objectAdmin",
+    "roles/logging.logWriter",
+    "roles/workflows.invoker",
+  ])
+}
+
+resource "google_project_iam_member" "sa_roles" {
+  for_each = local.service_account_roles
+
+  project = data.google_compute_default_service_account.default.project
+  role    = each.key
+  member  = "serviceAccount:${data.google_compute_default_service_account.default.email}"
 }
 
 resource "google_cloud_scheduler_job" "job" {
