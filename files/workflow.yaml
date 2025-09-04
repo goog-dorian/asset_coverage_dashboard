@@ -130,10 +130,6 @@ main:
               projectId: ${cfg.project_id}
               tableId: video_aspect_ratios
             result: get_table_result
-        - log_get_table_result:
-            call: sys.log
-            args:
-              data: ${get_table_result}
         - clear_get_table_result:
             assign:
             - get_table_result: null
@@ -162,7 +158,23 @@ main:
                           useLegacySql: false
             - condition: true
               raise: ${exception}
-
+  - make_active_video_ids_table:
+      call: googleapis.run.v2.projects.locations.jobs.run
+      args:
+        name: ${"projects/" + cfg.project_id + "/locations/" + cfg.location + "/jobs/gaarf-bq"}
+        body:
+          overrides:
+            containerOverrides:
+              args:
+              - --project
+              - ${cfg.project_id}
+              - --dataset-location
+              - ${cfg.dataset_location}
+              - --macro.raw_dataset
+              - ${cfg.dataset}
+              - --macro.dataset
+              - ${computed_dataset}
+              - ${cfg.gcs_bucket_prefix + "scripts/postprocess/active_video_ids.sql"}
   - make_video_ids_query:
       call: googleapis.bigquery.v2.jobs.insert
       args:
@@ -175,7 +187,7 @@ main:
                 datasetId: ${cfg.dataset}
                 projectId: ${cfg.project_id}
               location: ${cfg.dataset_location}
-              query: "SELECT video_id FROM video_assets WHERE video_id IS NOT NULL AND video_id NOT IN (SELECT video_id FROM video_aspect_ratios) ORDER BY video_id"
+              query: "SELECT video_id FROM active_video_ids"
       result: video_ids_query
   - get_page_of_video_ids_query:
       call: googleapis.bigquery.v2.jobs.getQueryResults
@@ -315,37 +327,6 @@ custom_bqinsert_retry_predicate:
   - otherwise:
       return: false
 
-run_gaarf_query:
-  params: [ script_name, accounts, cfg ] # It accepts the base name
-  steps:
-  - run_the_job:
-      call: googleapis.run.v2.projects.locations.jobs.run
-      args:
-        name: ${"projects/" + cfg.project_id + "/locations/" + cfg.location + "/jobs/gaarf"}
-        body:
-          overrides:
-            timeout: "3600s"
-            containerOverrides:
-              args:
-              - --ads-config
-              - ${cfg.gcs_bucket_prefix + cfg.ads_config_path}
-              - --disable-account-expansion
-              - --customer-id
-              - ${text.replace_all(text.substring(json.encode_to_string(accounts), 1, -1), "\"", "")}
-              - --output
-              - bq
-              - --bq.project
-              - ${cfg.project_id}
-              - --bq.dataset
-              - ${cfg.dataset}
-              - --bq.location
-              - ${cfg.dataset_location}
-              - ${cfg.gcs_bucket_prefix + "scripts/ads/" + script_name}
-              - --bg.no-union-view 1
-      result: job_result
-  - return_job_result:
-      return: ${job_result}
-
 batch_process_youtube:
   params: [ cfg, video_id_query_raw ]
   steps:
@@ -358,7 +339,7 @@ batch_process_youtube:
         shared: [ video_id_results ]
         for:
           value: batch_index
-          # make 10 concurrent request with 50 items 
+          # make 10 concurrent request with 50 items
           # there is memory limitation and values over 500 items fails with memory limit
           range: [ 0, 10 ]
           steps:
@@ -369,7 +350,7 @@ batch_process_youtube:
                 - set_video_ids:
                     assign:
                     - video_ids: ""
-                - aggragate_video_ids:
+                - aggregate_video_ids:
                     for:
                       range: ${[batch_index*50, math.min(len(video_id_query_raw), (batch_index + 1) * 50) -1]}
                       value: video_idx
@@ -380,10 +361,6 @@ batch_process_youtube:
                 - clean_up_video_ids:
                     assign:
                     - video_ids: ${text.substring(video_ids, 1, len(video_ids))}
-                - log_before_call_api:
-                    call: sys.log
-                    args:
-                      data: ${"calling api with " + video_ids}
                 - call_youtube_embed_api:
                     try:
                       call: http.get
@@ -406,10 +383,6 @@ batch_process_youtube:
                         initial_delay: 2
                         max_delay: 60
                         multiplier: 2
-                - log_response:
-                    call: sys.log
-                    args:
-                      data: ${"response " + video_ids + "  " +  json.encode_to_string(x.body.items)}
                 - record_result:
                     for:
                       value: response_idx
