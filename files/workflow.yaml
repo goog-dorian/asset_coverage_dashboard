@@ -327,6 +327,37 @@ custom_bqinsert_retry_predicate:
   - otherwise:
       return: false
 
+run_gaarf_query:
+  params: [ script_name, accounts, cfg ] # It accepts the base name
+  steps:
+  - run_the_job:
+      call: googleapis.run.v2.projects.locations.jobs.run
+      args:
+        name: ${"projects/" + cfg.project_id + "/locations/" + cfg.location + "/jobs/gaarf"}
+        body:
+          overrides:
+            timeout: "3600s"
+            containerOverrides:
+              args:
+              - --ads-config
+              - ${cfg.gcs_bucket_prefix + cfg.ads_config_path}
+              - --disable-account-expansion
+              - --customer-id
+              - ${text.replace_all(text.substring(json.encode_to_string(accounts), 1, -1), "\"", "")}
+              - --output
+              - bq
+              - --bq.project
+              - ${cfg.project_id}
+              - --bq.dataset
+              - ${cfg.dataset}
+              - --bq.location
+              - ${cfg.dataset_location}
+              - ${cfg.gcs_bucket_prefix + "scripts/ads/" + script_name}
+              - --bg.no-union-view 1
+      result: job_result
+  - return_job_result:
+      return: ${job_result}
+
 batch_process_youtube:
   params: [ cfg, video_id_query_raw ]
   steps:

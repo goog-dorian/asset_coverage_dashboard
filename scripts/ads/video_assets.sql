@@ -20,4 +20,6 @@ SELECT
   asset.youtube_video_asset.youtube_video_id AS video_id
 FROM
   asset
+LEFT JOIN
+  
 WHERE asset.type = 'YOUTUBE_VIDEO'
