@@ -12,15 +12,14 @@ AS (
         PARSE_NUMERIC(SPLIT(`ad_video_ad_video_asset`, '/')[SAFE_OFFSET(3)]) AS asset_id
       FROM `{raw_dataset}.video_campaigns`
     )
-  SELECT
-    video_id
-  FROM `{raw_dataset}.video_assets`
-  INNER JOIN active_assets AS ActiveAssets
+  SELECT VA.video_id
+  FROM `{raw_dataset}.video_assets` AS VA
+  INNER JOIN active_assets AS AA
     USING (asset_id)
   LEFT JOIN `{raw_dataset}.video_aspect_ratios` AS AR
     USING (video_id)
   WHERE
-    video_id IS NOT NULL
+    VA.video_id IS NOT NULL
     AND AR.video_id IS NULL
-  ORDER BY video_id
+  ORDER BY VA.video_id
 )
