@@ -15,9 +15,12 @@ AS (
   SELECT
     video_id
   FROM `{raw_dataset}.video_assets`
+  INNER JOIN active_assets AS ActiveAssets
+    USING (asset_id)
+  LEFT JOIN `{raw_dataset}.video_aspect_ratios` AS AR
+    USING (video_id)
   WHERE
     video_id IS NOT NULL
-    AND video_id NOT IN (SELECT video_id FROM `{raw_dataset}.video_aspect_ratios`)
-    AND asset_id IN (SELECT asset_id FROM active_assets)
+    AND AR.video_id IS NULL
   ORDER BY video_id
 )
